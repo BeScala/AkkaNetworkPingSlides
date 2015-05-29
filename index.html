@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>reveal.js - The HTML Presentation Framework</title>
+
+		<meta name="description" content="A framework for easily creating beautiful presentations using HTML">
+		<meta name="author" content="Hakim El Hattab">
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/moon.css" id="theme">
+
+		<!-- Code syntax highlighting -->
+		<link rel="stylesheet" href="lib/css/monokai_sublime.css">
+
+		<style type="text/css">
+			.slides img{ border-width:0; }
+		</style>
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+
+				<section data-markdown>
+					# ScalaLab
+					## Akka hacking Session
+				</section>
+
+				<section data-background="#360515">
+
+					<section data-markdown>
+						## Some words on Akka
+					</section>
+
+					<section data-markdown>
+					###Actors
+					- **Akka** is a toolkit that promises scalability via _Actors_
+					    + each actor can have internal state<br />
+					      which can be changed only via messages<br/>
+					      which are executed in order
+					    + supervision strategies, event buses, remote actors, cluster...
+
+					- Vertical and horizontal scalability using single paradigm
+
+					- Cons: 
+					    + paradigm switch, takes time to learn
+					    + a general concurrency pattern, but doesn't fit **every** usage case
+					</section>
+				</section>
+
+				<section data-markdown>
+					## Let's hack!
+				</section>
+
+				<section>
+
+					<section data-markdown>
+					###Akka-Network-Ping Base Actor Hierarchy 
+
+					![Actor Hierarchy](images/01-Base-Actor-Hierarchy.png) 
+					
+					</section>
+
+					<section data-markdown>
+					###Akka-Network-Ping External communication path
+
+					![External Communication Path](images/02-External-communication-path.png) 
+					<!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+
+					</section>
+					
+				</section>
+
+				<section data-background="#0C5E75">
+					
+					<section data-markdown>
+					###Exercise 1 - Basic, pinging a network
+
+					![External Communication Path](images/03-Exercise-1.png) 
+					<!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+					</section>
+
+					<section data-markdown>
+					### Creating a top-level Actor
+					<pre><code class="scala">
+						val networkPingCoordinator = 
+					  	system.actorOf(
+					  		Props(new PingResponseCoordinator), 
+					  		"networkPingCoordinator"
+					  	)
+					</code></pre>
+						
+					A good practice is to defined it on actor's companion object
+					<pre><code class="scala">
+						object PingResponseCoordinator {
+					  	def props(): Props = Props(new PingResponseCoordinator)
+						}
+
+						val networkPingCoordinator = 
+					  	system.actorOf(
+					  		PingResponseCoordinator.props(), 
+					  		"networkPingCoordinator"
+					  	)
+					</code></pre>
+					</section>
+
+					<section data-markdown>					
+					### Creating a child Actor
+
+					We create a child actor by using an actor's context instead.  
+
+					The ***PingServer*** and ***PingMaster*** actors are children of ***PingResponseCoordinator***
+
+					<pre><code class="scala">
+						class PingResponseCoordinator extends Actor with ActorLogging {
+
+						  val pingServer = 
+						  	context.actorOf(PingServer.props(), "pingServer")
+
+						  val pingMaster = 
+						  	context.actorOf(PingMaster.props(pingServer), "pingMaster")
+						}
+					</code></pre>
+					</section>
+
+					<section data-markdown>
+					### Sending a message
+
+					A message is sent using the ! operator,  
+					better known as the `tell` operator.  
+					<pre><code class="scala">
+						// NetworkPingApp.createPinger method
+						import PingResponseCoordinator._
+
+						def createPinger(pingerCount:Int, pingCount:Int, pingInterval:Int) = {
+						  for ( _ <- 1 to pingerCount)
+					    	networkPingCoordinator ! CreatePinger(pingCount, pingInterval)	
+						}  
+					</code></pre>
+					Basically, we tell the ping coordinator to create Pinger actors and we don't wait for a response (fire-and-forget).
+					</section>
+
+
+					<section data-markdown>
+					### Sending to `self`
+
+					Each actor has a reference to himself that can be accessed via the `self` field*.
+					<pre><code class="scala">
+						/** The 'self' field holds the ActorRef for this actor. */
+						implicit final val self: ActorRef
+
+						def receive = {
+							// send to actor's own mailbox for later processing
+							case "Hello" => self ! "Hi!" 
+						}
+					</code></pre>	
+					\* Note that this is different then 'this', 'this' refers to the object instance while `self` points to the ***ActorRef*** of the current Actor. 
+
+					</section>
+
+					<section data-markdown>
+					### Sending a message back to `sender`
+
+					The `sender()` method gives you the ActorRef of the Actor that sent the current message.
+					<pre><code class="scala">
+						/** The reference sender Actor of the last received message. */
+						final def sender(): ActorRef
+
+					 	def receive = {
+							// send a message back to the sender of 'Ola' message
+							case "Ola" => sender() ! "Hello!"
+						}
+					</code></pre>
+					Think about the consequences of the following fragment.
+					<pre><code class="scala">
+						// this will run on a separated thread
+						def doSomething = Future("Hello!") 
+
+						def receive = {
+							case "Ola" => doSomething.map { greetings => sender() ! greetings }
+						}
+					</code></pre>
+					</section>
+
+
+					<section data-markdown>
+					### Receiving a message
+
+					The actor's receive message is the where messages are handled.  
+					The impl must define which messages the actor is supposed to receive and act upon.
+					<pre><code class="scala">
+						import PingResponseCoordinator._
+						class PingMaster(pingServer: ActorRef) extends Actor {
+						  override def receive = {
+						    case CreatePinger(pingCount, pingInterval) =>
+						      context.actorOf(Pinger.props(pingServer, pingCount, pingInterval))
+						  }
+						}
+					</code></pre>
+					***PingMaster*** receives a ***CreatePinger*** message and create Pinger actors.
+					</section>
+
+				</section>
+
+				<section data-background="#360515">
+					<section data-markdown>
+					###Exercise 2 - Ping at regular time interval
+
+					![Ping at regular time interval](images/04-Exercise-2.png) <!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+					</section>
+
+					<section data-markdown>
+					### Scheduling a message
+
+					It's possible to add some delay when sending a message to an actor. 
+					<pre><code class="scala">
+						import scala.concurrent.duration._
+						context.system.scheduler.scheduleOnce(
+							2 seconds, // delaying 2 seconds		
+							actorRef, // the actorRef to send the message				
+							Message("hey") // the message 	
+						)
+					</code></pre>
+					</section>
+
+
+					<section data-markdown>
+					### Where does an actor live?
+
+					An actor is created and lives inside the ***Actor System***. We can't access it directly. We have an ***ActorRef*** instead. 
+
+					If you don't stop an actor, it'll live as long as your ***Actor System*** is running.
+					<pre><code class="scala">
+						// stopping a child
+						context.stop(childActorRef) 
+
+						// stopping ifself
+						context.stop(self) 
+
+						// usually for top-level actors
+						actorSystem.stop(myTopLevelActorRef) 
+					</code></pre>
+
+					Stopping an actor is done asynchronously. All its children will be stopped as well.
+					</section>
+
+				</section>
+
+				<section>
+					<section data-markdown>
+					###Exercise 3 - Response delay
+
+					![Response delay](images/05-Exercise-3.png) <!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+					</section>
+					
+					<section data-markdown>
+					###Simulating latency
+
+					We want to pretend that PingServer is too  
+					busy and can't respond immediatly.
+
+					For that purpose we'll switch between  
+					`receive` implementations. 
+					</section>
+
+					<section data-markdown>
+					### Becoming something different
+
+					The `context.become` method allows  
+					us to change an actor's behavior. 
+
+					<pre><code class="scala">
+						class MoodyActor extends Actor {
+						
+							def goodMood = {
+								case Rain => context.become(badMood)
+								case _ => sender() ! "I'm doing fine!"
+							}
+
+							def badMood = {
+								case Sun => context.become(goodMood)
+								case _ => sender() ! "I'm not in a good mood!"
+							}
+
+							def receive = goodMood
+						}
+					</code></pre>
+				</section>
+				
+				<section data-markdown>
+				### Delaying message processing
+
+				We can put messages aside using the Stash trait.
+
+				<pre><code class="scala">
+					class MoodyActor extends Actor with Stash {
+
+						def goodMood = {
+							case Rain => context.become(badMood)
+							case _ => sender() ! "I'm doing fine!"
+						}
+						
+						def badMood = {
+							// sun is back, ready to talk again
+							case Sun => 
+                unstashAll() // bring messages back 
+                context.become(goodMood)
+							
+							// put messages aside while in bad mood
+							case _ => stash() 
+						}
+
+						def receive = goodMood
+					}
+				</code></pre>
+				</section>
+
+				</section>
+				
+			</div>
+
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+
+			// Full list of configuration options available at:
+			// https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+
+				transition: 'slide', // none/fade/slide/convex/concave/zoom
+
+				// Optional reveal.js plugins
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, condition: function() { return !!document.querySelector( 'pre code' ); }, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true },
+					{ src: 'plugin/notes/notes.js', async: true }
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
