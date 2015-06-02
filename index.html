@@ -342,6 +342,118 @@
 
 				</section>
 				
+				<section>
+					<section data-markdown>
+					###Exercise 4 - Scaling your Actors
+
+					![Response delay](images/05-Exercise-3.png) <!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+					</section>
+					
+					<section data-markdown>
+					###Scaling Actors with Akka Routing
+
+					- In exercise 3, we introduced an artificial bottleneck
+
+					- The effect is that our *PingServer* doesn't scale:
+					it limits the throughput of the application
+
+					- We now scale-up the *PingServer* by turning it onto a router
+
+					</section>
+
+					<section data-markdown>
+					### Akka Routing
+
+					- We implement a Actor as usual, but scale-up by using either a *group-router*
+					or a *pooled-router* having a number of *Routees* underneath
+
+						+ Group-router: Explicitly create a set of Actors, then create a group router that has
+					these Actors underneath.
+
+						+ Pooled-router: Let the system create the *Routees* for you
+
+				</section>
+				
+				<section data-markdown>
+					### Akka Routing Strategies
+
+					- From a programming point of view, we send messages to a single entry point, which is the router
+
+					- A routing strategy is chosen from one of the following:
+
+						+ Round-Robin
+						+ Random
+						+ Smallest-mailbox
+						+ Broadcast
+						+ Scatter-gather First-completed
+						+ Tail-chopping
+						+ Consistent Hashing
+
+				</section>
+				
+				<section data-markdown>
+					### Akka Routing - Implementation aspects
+
+					- Implement Akka Router either
+						+ Programmatically
+						+ Through configuration
+
+					- We will change our *PingServer* into a *pooled-router* using a *round-robin* routing strategy and do this purely via configuration 
+
+				</section>
+				
+				<section data-markdown>
+				### Pooled-Router via configuration (1)
+
+				- Suppose that our base Actor lives at ***/somePoint/OtherPoint/ActorToBeScaled***
+				- We add the router's configuration info in ***resources/applciation.conf***
+
+				<pre><code class="scala">
+     akka {
+       actor {
+         deployment {
+           /somePoint/OtherPoint/ActorToBeScaled {
+             router = round-robin-pool
+             nr-of-instances = 100
+           }
+         }
+       }
+     }
+				</code></pre>
+				</section>
+
+				<section data-markdown>
+				### Pooled-Router via configuration (2)
+
+				If our non-router Actor was created as follows:
+
+				<pre><code class="scala">
+	context.actorOf(
+		ActorToBeScaled.props(...), "ActorToBeScaled"
+	)
+				</code></pre>
+
+				We utilize *FromConfig.props* to instruct the system to get the router set-up from configuration
+
+				<pre><code class="scala">
+	context.actorOf(
+		FromConfig.props(
+			ActorToBeScaled.props(...)
+		), "ActorNowScaled"
+	)
+				</code></pre>
+				</section>
+
+				<section data-markdown>
+				###Actor Hierarchy with ***PingServer*** as a Router
+
+				![Actor Hierarchy Pooled-Router](images/10-Actor-Hierarchy-PooledRouter.png) 
+				<!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+
+				</section>
+
+			</section>
+				
 			</div>
 
 		</div>
