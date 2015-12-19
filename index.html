@@ -464,6 +464,199 @@
 
 			</section>
 				
+			<section>
+
+				<section data-markdown>
+				###Exercise 5 - Introducing 'unreliable' Actors
+
+				![Unreliable PingServer Actor](images/15-Exercise-5.png) 
+				<!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+
+				</section>
+
+				<section data-markdown>
+					### Message Delivery in Akka - Reliability
+
+					- Different message delivery guarantees are possible:
+						+ At most once
+						+ At least once
+						+ Exactly once
+
+					- Akka implements *At most once*
+						+ Implications when working with *Akka remoting* (or *Akka Clustering*)
+						+ Messages may get *lost*
+						+ Application *must* deal with this
+
+				</section>
+
+			</section>
+
+			<section>
+
+				<section data-markdown>
+				###Exercise 6 - Dealing with Failure/Delegating work to one-off Actors
+
+				![Delegating work to one-off Actors](images/20-Actor-Hierarchy-One-off-Actors.png) 
+				<!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+
+				</section>
+
+				<section data-markdown>
+					### Dealing with Failure (1)
+
+					- Failure is a fact of life
+						+ Deal with failure in the right place
+						+ It should never be the responsiblity of the client to recover from failure
+
+					- What is the definition of an Actor failure in Akka ?
+					  + An exception is thrown during:
+						- the processing of a message (behaviour)
+						- Actor initialisation
+						- execution of one of the so-called life-cycle hooks
+					
+				</section>
+
+				<section data-markdown>
+					### Dealing with Failure (2)
+
+					- What does Akka do in case of an Actor failure ?
+						+ The exception that caused the failure doesn't crash the system
+						+ Determined by a *Directive* in the Actor's *Supervision* strategy:
+					  - Resume
+					  - Restart
+					  - Stop
+					  - Escalate	
+						+ There's a default behavior - Let's find out what it is in this exercise
+
+				</section>
+
+			</section>
+
+			<section>
+
+				<section data-markdown>
+				###Exercise 7 - Tuning an actor's supervision strategy
+
+				![Tuning Actor Supervisory strategy](images/25-Exercise-6-7.png) 
+				<!-- .element: style="background:none; border:2px solid #FDF6E4; box-shadow:none; background-color:#FDF6E4;" -->
+
+				</section>
+
+				<section data-markdown>
+					### Actor Supervision strategy
+
+					- Akka comes with two configurable supervision strategies
+						+ One-For-One-Strategy
+						  - Strategy is applied to failing Actor only
+						+ All-For-One-Strategy
+						  - Strategy is applied to *ALL* supervised children
+					
+				</section>
+
+				<section data-markdown>
+					### Actor Supervision strategy - implementation
+
+					- Akka's default Supervision strategy can be overriden by overriding a ```supervisionStrategy``` variable
+
+				<pre><code class="scala">
+			override val supervisorStrategy: SupervisorStrategy = {
+			  val myDecider: Decider = {
+			    case TheExceptionThatWasThrown =>
+			      DoSomethingSmart()
+			      SupervisorStrategy.Restart
+			  }
+			  OneForOneStrategy()(
+			                      decider =
+			                        myDecider orElse
+			                        super.supervisorStrategy.decider
+			                     )
+			}
+				</code></pre>
+
+				</section>
+
+
+			</section>
+
+			<section>
+
+				<section data-markdown>
+				###Exercise 8 - The *Ask* pattern
+
+				 - Sometimes you want to interact with Actors from a non-Actor based application
+					 + Sending a message is not a problem as long as you have an ActorRef ...
+					 + ... but how to you the message from the reponse in your application ?
+
+				</section>
+
+				<section data-markdown>
+					### Applying the *Ask* pattern
+
+					- Instead of using the *tell* (*!*) operator, use the ask operator: *?*
+						+ an implicit *ExecutionContext* needs to be in scope
+						+ an implicit *Timeout* needs to be defined
+						+ *akka.pattern.ask* should be imported
+					- ask return a *Future* that is completed either with
+						+ a *Success* holding the reponse
+						or
+						+ a *Failure* holding an *AskTimeoutException* in case no response is received within the given *Timeout*
+
+				</section>
+
+				<section data-markdown>
+				### *Ask* coding example
+
+				Suppose we send *someActor* a *SomeQuestion* message and the response is a *SomeAnswer* message
+
+				<pre><code class="scala">
+			import myActorSystem.dispatcher
+			import akka.pattern.ask
+			implicit val myTimeout: Timeout = Timeout(1 second)
+			
+			val reponse: Future[Any] = someActor ? SomeQuestion
+			
+			response.mapTo[SomeAnswer] onComplete {
+			  case Success(someAnswer) =>
+			    doSomethingFancyWithAnswer(someAnswer)
+			  case Failure(failure)    =>
+			    dealWithFailure(failure)
+			}
+				</code></pre>
+
+				</section>
+
+				<section data-markdown>
+				###The *Ask* pattern
+
+				 - Note the use of *mapTo*: this is needed because of *Type erasure* in the JVM
+				 - The *ask* pattern can also be used in the communication between two Actors
+				   + in that case, don't install a handler to get the reponse
+					 + instead, use *pipeTo* (*import akka.pattern.pipe*)
+
+				</section>
+
+				<section data-markdown>
+				### *Ask/pipeTo* coding example
+
+				Suppose we send *someActor* a *SomeQuestion* message and the response is a *SomeAnswer* message
+
+				<pre><code class="scala">
+			  import myActorSystem.dispatcher
+			  import akka.pattern.{ask, pipe}
+			  implicit val myTimeout: Timeout = Timeout(1 second)
+			
+			  someActor ? SomeQuestion pipeTo self
+			
+			  override def receive: Receive = {
+			    case answer: SomeAnswer =>
+			      doSomethingFancyWithAnswer(answer)
+			    case Status.Failure(failure) =>
+			      dealWithFailure(failure)
+			  }
+				</code></pre>
+
+				</section>
+
 			</div>
 
 		</div>
